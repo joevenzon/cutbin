@@ -27,6 +27,7 @@ namespace CutBin
         public Label label;
         public Label units;
         public TextBox text;
+        public CutProperty model;
     }
 
     public class ViewModel
@@ -50,6 +51,7 @@ namespace CutBin
 
         private static readonly Color k_disabledColor = Color.FromRgb(200, 200, 200);
         private static readonly Color k_computedColor = Color.FromRgb(200, 255, 200);
+        private static readonly Color k_warningColor = Color.FromRgb(255, 200, 200);
         private static readonly Color k_enabledColor = Color.FromRgb(255, 255, 255);
 
         public ViewModel(MainWindow window)
@@ -160,6 +162,8 @@ namespace CutBin
                 Grid.SetColumn(field.units, 2);
                 _cutResultGrid.Children.Add(field.units);
 
+                field.model = property;
+
                 row++;
             }
 
@@ -194,11 +198,18 @@ namespace CutBin
         {
             if (_selectedCut != null && field.text.Text != "" && !_refreshing)
             {
-                // push input to cut
-                _selectedCut.SetProperty(name, Convert.ToDouble(field.text.Text));
+                try
+                {
+                    // push input to cut
+                    _selectedCut.SetProperty(name, Convert.ToDouble(field.text.Text));
 
-                // refresh computed values
-                RefreshComputedValues();
+                    // refresh computed values
+                    RefreshComputedValues();
+                }
+                catch
+                {
+
+                }
             }
         }
 
@@ -366,11 +377,16 @@ namespace CutBin
                 {
                     double value = _selectedCut.ComputeValue(field.Key);
                     field.Value.text.Text = value.ToString("0.#####");
+
+                    bool warn = field.Value.model.warnAbove != 0 && value > field.Value.model.warnAbove;
+                    warn = warn || (field.Value.model.warnBelow != 0 && value < field.Value.model.warnBelow);
+                    field.Value.text.Background = new SolidColorBrush(warn ? k_warningColor : k_computedColor);
                 }
 
                 var x = Enumerable.Range(0, 360).Select(i => (double)i).ToList();
                 var y = _selectedCut.ComputeCuttingForces(x);
                 double total = y.Sum();
+                //_graph.Description = "Force " + total;
                 _graph.Plot(x, y);
                 DataRect rect = _graph.ActualPlotRect;
                 _graph.SetPlotRect(new DataRect(0, 0, 360, y.Max()));

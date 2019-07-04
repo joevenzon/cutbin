@@ -14,6 +14,8 @@ namespace CutBin
         public double value;
         public string units;
         public bool enabled;
+        public double warnAbove;
+        public double warnBelow;
     }
 
     public struct CutPropertyCache
@@ -61,12 +63,12 @@ namespace CutBin
             new CutProperty { name = "RPM" },
             new CutProperty { name = "Feed Rate", units = "in/min" },
             new CutProperty { name = "Material Removal Rate", units = "in^3/min" },
-            new CutProperty { name = "Chip Thickness", units = "in" },
-            new CutProperty { name = "Power at Tool", units = "HP" },
-            new CutProperty { name = "Power at Motor", units = "HP" },
-            new CutProperty { name = "Tangential Cutting Force", units = "lbf" },
-            new CutProperty { name = "Maximum Force Vector", units = "lbf" },
-            new CutProperty { name = "Deflection of Tool", units = "in" },
+            new CutProperty { name = "Chip Thickness", units = "in", warnBelow = 0.0007 },
+            new CutProperty { name = "Power at Tool 1", units = "HP" },
+            new CutProperty { name = "Power at Tool 2", units = "HP" },
+            new CutProperty { name = "Tangential Cutting Force 1", units = "lbf" },
+            new CutProperty { name = "Tangential Cutting Force 2", units = "lbf" },
+            new CutProperty { name = "Deflection of Tool", units = "in", warnAbove = 0.0005 },
         };
 
         public Cut()
@@ -244,6 +246,16 @@ namespace CutBin
             return result;
         }
 
+        static double lerp(double x, double y, double s)
+        {
+            return x + s * (y - x);
+        }
+
+        static double saturate(double x)
+        {
+            return x;
+        }
+
         public double ComputeValue(string name)
         {
             Dictionary<string, double> results = new Dictionary<string, double>();
@@ -264,13 +276,19 @@ namespace CutBin
             double chipthicknessAngle = Math.Min(90, engagementAngle);
             double chipthickness = prop.fpt * Math.Sin(chipthicknessAngle * Math.PI / 180);
 
+            double ultimateTensileStrength = prop.Kp*292207; // this conversion factor is just a guess based on one datapoint for aluminum
+            double WoverD = prop.r / prop.tooldiam;
+            double engagementFactor = lerp(1.0, 1.1, saturate((WoverD - 0.66)/0.34)); // for aluminum...
+            Fmax = ultimateTensileStrength * prop.d * prop.fpt * prop.teeth * (engagementAngle / 360) * engagementFactor * prop.wear;
+            powermotor = Fmax * prop.speed / 33000;
+
             results.Add("Feed Rate", feedrate);
             results.Add("RPM", rpm);
             results.Add("Material Removal Rate", mrr);
-            results.Add("Power at Tool", powertool);
-            results.Add("Power at Motor", powermotor);
-            results.Add("Tangential Cutting Force", Fc);
-            results.Add("Maximum Force Vector", Fmax);
+            results.Add("Power at Tool 1", powertool);
+            results.Add("Power at Tool 2", powermotor);
+            results.Add("Tangential Cutting Force 1", Fc);
+            results.Add("Tangential Cutting Force 2", Fmax);
             results.Add("Deflection of Tool", deflection);
             results.Add("Chip Thickness", chipthickness);
 
@@ -383,7 +401,7 @@ namespace CutBin
             CutPropertyCache prop = GetCutProperties();
             List<double> results = new List<double>();
 
-            const double k_z_resolution = 0.001;
+            double k_z_resolution = Math.Max(0.001, prop.d/100.0);
 
             double toolradius = prop.tooldiam / 2;
             
